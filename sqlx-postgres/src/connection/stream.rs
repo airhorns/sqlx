@@ -13,7 +13,7 @@ use crate::message::{
     BackendMessage, BackendMessageFormat, EncodeMessage, FrontendMessage, Notice, Notification,
     ParameterStatus, ReceivedMessage,
 };
-use crate::net::{self, BufferedSocket, Socket};
+use crate::net::{self, BufferedSocket, Socket, WithSocket};
 use crate::{PgConnectOptions, PgDatabaseError, PgSeverity};
 
 // the stream is a separate type from the connection to uphold the invariant where an instantiated
@@ -42,9 +42,20 @@ pub struct PgStream {
 
 impl PgStream {
     pub(super) async fn connect(options: &PgConnectOptions) -> Result<Self, Error> {
-        let socket_result = match options.fetch_socket() {
-            Some(ref path) => net::connect_uds(path, MaybeUpgradeTls(options)).await?,
-            None => net::connect_tcp(&options.host, options.port, MaybeUpgradeTls(options)).await?,
+        let socket_result = match (&options.socket_factory, options.fetch_socket()) {
+            (Some(factory), _) => {
+                let socket = factory
+                    .connect(&options.host, options.port)
+                    .await
+                    .map_err(Error::Io)?;
+                MaybeUpgradeTls(options).with_socket(socket).await
+            }
+            (_, Some(ref path)) => {
+                net::connect_uds(path, MaybeUpgradeTls(options)).await?
+            }
+            (_, None) => {
+                net::connect_tcp(&options.host, options.port, MaybeUpgradeTls(options)).await?
+            }
         };
 
         let socket = socket_result?;

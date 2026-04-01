@@ -16,9 +16,18 @@ impl MySqlConnection {
     pub(crate) async fn establish(options: &MySqlConnectOptions) -> Result<Self, Error> {
         let do_handshake = DoHandshake::new(options)?;
 
-        let handshake = match &options.socket {
-            Some(path) => crate::net::connect_uds(path, do_handshake).await?,
-            None => crate::net::connect_tcp(&options.host, options.port, do_handshake).await?,
+        let handshake = match (&options.socket_factory, &options.socket) {
+            (Some(factory), _) => {
+                let socket = factory
+                    .connect(&options.host, options.port)
+                    .await
+                    .map_err(Error::Io)?;
+                do_handshake.with_socket(socket).await
+            }
+            (_, Some(path)) => crate::net::connect_uds(path, do_handshake).await?,
+            (_, None) => {
+                crate::net::connect_tcp(&options.host, options.port, do_handshake).await?
+            }
         };
 
         Self::from_stream(options, handshake?)

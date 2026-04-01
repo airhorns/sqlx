@@ -1,10 +1,12 @@
 use std::borrow::Cow;
 use std::env::var;
-use std::fmt::{Display, Write};
+use std::fmt::{self, Display, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 pub use ssl_mode::PgSslMode;
 
+use crate::net::SocketFactory;
 use crate::{connection::LogSettings, net::tls::CertificateInput};
 
 mod connect;
@@ -13,7 +15,7 @@ mod pgpass;
 mod ssl_mode;
 
 #[doc = include_str!("doc.md")]
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct PgConnectOptions {
     pub(crate) host: String,
     pub(crate) port: u16,
@@ -30,6 +32,30 @@ pub struct PgConnectOptions {
     pub(crate) log_settings: LogSettings,
     pub(crate) extra_float_digits: Option<Cow<'static, str>>,
     pub(crate) options: Option<String>,
+    pub(crate) socket_factory: Option<Arc<dyn SocketFactory>>,
+}
+
+impl fmt::Debug for PgConnectOptions {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PgConnectOptions")
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("socket", &self.socket)
+            .field("username", &self.username)
+            .field("password", &self.password)
+            .field("database", &self.database)
+            .field("ssl_mode", &self.ssl_mode)
+            .field("ssl_root_cert", &self.ssl_root_cert)
+            .field("ssl_client_cert", &self.ssl_client_cert)
+            .field("ssl_client_key", &self.ssl_client_key)
+            .field("statement_cache_capacity", &self.statement_cache_capacity)
+            .field("application_name", &self.application_name)
+            .field("log_settings", &self.log_settings)
+            .field("extra_float_digits", &self.extra_float_digits)
+            .field("options", &self.options)
+            .field("socket_factory", &self.socket_factory.as_ref().map(|_| ".."))
+            .finish()
+    }
 }
 
 impl Default for PgConnectOptions {
@@ -90,6 +116,7 @@ impl PgConnectOptions {
             extra_float_digits: Some("2".into()),
             log_settings: Default::default(),
             options: var("PGOPTIONS").ok(),
+            socket_factory: None,
         }
     }
 
@@ -438,6 +465,19 @@ impl PgConnectOptions {
 
             write!(options_str, "-c {k}={v}").expect("failed to write an option to the string");
         }
+        self
+    }
+
+    /// Sets a custom socket factory for creating connections.
+    ///
+    /// When set, the factory will be called instead of the default
+    /// `TcpStream::connect` to create the underlying transport.
+    /// This enables custom transports such as connections routed through
+    /// a proxy, SSH tunnel, or any other custom socket implementation.
+    ///
+    /// The factory is stored behind an `Arc` so `PgConnectOptions` remains `Clone`.
+    pub fn socket_factory<F: SocketFactory>(mut self, factory: F) -> Self {
+        self.socket_factory = Some(Arc::new(factory));
         self
     }
 

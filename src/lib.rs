@@ -44,7 +44,7 @@ pub use sqlx_core::Either;
 /// [`MySqlConnectOptions::connect_with_socket()`][crate::mysql::MySqlConnectOptions::connect_with_socket]
 /// or [`PgConnectOptions::connect_with_socket()`][crate::postgres::PgConnectOptions::connect_with_socket].
 pub mod net {
-    pub use sqlx_core::net::{Socket, connect_with};
+    pub use sqlx_core::net::{Socket, SocketFactory, connect_with};
     pub use sqlx_core::io::ReadBuf;
 }
 

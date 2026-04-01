@@ -1,9 +1,12 @@
+use std::fmt;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 mod connect;
 mod parse;
 mod ssl_mode;
 
+use crate::net::SocketFactory;
 use crate::{connection::LogSettings, net::tls::CertificateInput};
 pub use ssl_mode::MySqlSslMode;
 
@@ -59,7 +62,7 @@ pub use ssl_mode::MySqlSslMode;
 /// # Ok(())
 /// # }
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct MySqlConnectOptions {
     pub(crate) host: String,
     pub(crate) port: u16,
@@ -80,6 +83,34 @@ pub struct MySqlConnectOptions {
     pub(crate) no_engine_substitution: bool,
     pub(crate) timezone: Option<String>,
     pub(crate) set_names: bool,
+    pub(crate) socket_factory: Option<Arc<dyn SocketFactory>>,
+}
+
+impl fmt::Debug for MySqlConnectOptions {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("MySqlConnectOptions")
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("socket", &self.socket)
+            .field("username", &self.username)
+            .field("password", &self.password)
+            .field("database", &self.database)
+            .field("ssl_mode", &self.ssl_mode)
+            .field("ssl_ca", &self.ssl_ca)
+            .field("ssl_client_cert", &self.ssl_client_cert)
+            .field("ssl_client_key", &self.ssl_client_key)
+            .field("statement_cache_capacity", &self.statement_cache_capacity)
+            .field("charset", &self.charset)
+            .field("collation", &self.collation)
+            .field("log_settings", &self.log_settings)
+            .field("pipes_as_concat", &self.pipes_as_concat)
+            .field("enable_cleartext_plugin", &self.enable_cleartext_plugin)
+            .field("no_engine_substitution", &self.no_engine_substitution)
+            .field("timezone", &self.timezone)
+            .field("set_names", &self.set_names)
+            .field("socket_factory", &self.socket_factory.as_ref().map(|_| ".."))
+            .finish()
+    }
 }
 
 impl Default for MySqlConnectOptions {
@@ -111,6 +142,7 @@ impl MySqlConnectOptions {
             no_engine_substitution: true,
             timezone: Some(String::from("+00:00")),
             set_names: true,
+            socket_factory: None,
         }
     }
 
@@ -401,6 +433,19 @@ impl MySqlConnectOptions {
     /// is supported by your MySQL or MariaDB server version and compatible with UTF-8.
     pub fn set_names(mut self, flag_val: bool) -> Self {
         self.set_names = flag_val;
+        self
+    }
+
+    /// Sets a custom socket factory for creating connections.
+    ///
+    /// When set, the factory will be called instead of the default
+    /// `TcpStream::connect` to create the underlying transport.
+    /// This enables custom transports such as connections routed through
+    /// a proxy, SSH tunnel, or any other custom socket implementation.
+    ///
+    /// The factory is stored behind an `Arc` so `MySqlConnectOptions` remains `Clone`.
+    pub fn socket_factory<F: SocketFactory>(mut self, factory: F) -> Self {
+        self.socket_factory = Some(Arc::new(factory));
         self
     }
 }

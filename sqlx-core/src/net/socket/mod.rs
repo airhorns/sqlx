@@ -139,6 +139,22 @@ where
     }
 }
 
+/// A factory for creating connected sockets to a database server.
+///
+/// This allows customizing how connections are established, for example
+/// to route through a proxy, SSH tunnel, or use a custom transport.
+///
+/// The factory is stored behind an `Arc` so that `ConnectOptions` types
+/// remain `Clone`.
+pub trait SocketFactory: Send + Sync + 'static {
+    /// Create a new connected socket to the given host and port.
+    fn connect(
+        &self,
+        host: &str,
+        port: u16,
+    ) -> Pin<Box<dyn Future<Output = io::Result<Box<dyn Socket>>> + Send>>;
+}
+
 pub trait WithSocket {
     type Output;
 
